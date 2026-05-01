@@ -53,6 +53,7 @@ typedef struct
   bool manual_mode;
   bool stream_enabled;
   uint32_t last_debug_tick;
+  uint32_t dead_time_ns;
 } WirelessTxState_t;
 /* USER CODE END PTD */
 
@@ -69,6 +70,7 @@ typedef struct
 #define TX_CURRENT_OFFSET_SAMPLES       64U
 #define TX_DAC_OVERCURRENT_THRESHOLD    3000U
 #define TX_CLI_BUFFER_LENGTH            64U
+#define TX_DT_MAX_NS                    11854U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -137,6 +139,8 @@ static void WirelessTx_ProcessCli(void);
 static void WirelessTx_HandleCommand(char *command);
 static void WirelessTx_Log(const char *format, ...);
 static void WirelessTx_PrintPrompt(void);
+static uint8_t WirelessTx_NsToDtg(uint32_t dt_ns);
+static void WirelessTx_ApplyDeadTime(uint32_t dt_ns);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -146,6 +150,7 @@ static void WirelessTx_Init(void)
 {
   g_tx_state.stream_enabled = true;
   g_tx_state.force_enable = false;
+  g_tx_state.dead_time_ns = SW_DEADTIME_NS;
   g_tx_state.manual_mode = false;
   g_tx_state.frequency_hz = TX_FREQ_MIN_HZ;
   g_tx_state.requested_frequency_hz = TX_FREQ_MIN_HZ;
@@ -459,7 +464,7 @@ static void WirelessTx_PrintDebug(void)
   uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim1);
   int length = snprintf(message,
                         sizeof(message),
-                        "status mode=%s tx=%u freq=%luHz arr=%lu duty=50%% cmp=%u pot=%u bus=%u iu=%4ld iv=%4ld\r\n",
+                        "status mode=%s tx=%u freq=%luHz arr=%lu duty=50%% cmp=%u pot=%u bus=%u iu=%4ld iv=%4ld dt=%5luns\r\n",
                         g_tx_state.manual_mode ? "manual" : "pot",
                         g_tx_state.tx_enabled ? 1U : 0U,
                         (unsigned long)g_tx_state.frequency_hz,
@@ -468,7 +473,8 @@ static void WirelessTx_PrintDebug(void)
                         g_tx_state.pot_raw,
                         g_tx_state.bus_raw,
                         (long)g_tx_state.current_u,
-                        (long)g_tx_state.current_v);
+                        (long)g_tx_state.current_v,
+                        (unsigned long)g_tx_state.dead_time_ns);
 
   if (length > 0)
   {
@@ -529,7 +535,7 @@ static void WirelessTx_HandleCommand(char *command)
 
   if (strcmp(token, "help") == 0)
   {
-    WirelessTx_Log("commands: help, status, mode pot, mode manual, enable 0|1, freq <100..300kHz>, stream on|off, cal, ocp <0..4095>\r\n");
+    WirelessTx_Log("commands: help, status, mode pot, mode manual, enable 0|1, freq <100..300kHz>, dt [ns], stream on|off, cal, ocp <0..4095>\r\n");
     return;
   }
 
@@ -622,6 +628,28 @@ static void WirelessTx_HandleCommand(char *command)
     return;
   }
 
+  if (strcmp(token, "dt") == 0)
+  {
+    char *value = strtok(NULL, " ");
+
+    if (value == NULL)
+    {
+      WirelessTx_Log("dt=%luns\r\n", (unsigned long)g_tx_state.dead_time_ns);
+      return;
+    }
+
+    unsigned long requested = strtoul(value, NULL, 10);
+
+    if (requested > TX_DT_MAX_NS)
+    {
+      requested = TX_DT_MAX_NS;
+    }
+
+    WirelessTx_ApplyDeadTime((uint32_t)requested);
+    WirelessTx_Log("dt=%luns\r\n", (unsigned long)g_tx_state.dead_time_ns);
+    return;
+  }
+
   if (strcmp(token, "ocp") == 0)
   {
     char *value = strtok(NULL, " ");
@@ -669,6 +697,48 @@ static void WirelessTx_Log(const char *format, ...)
 static void WirelessTx_PrintPrompt(void)
 {
   WirelessTx_Log("tx> ");
+}
+
+static uint8_t WirelessTx_NsToDtg(uint32_t dt_ns)
+{
+  uint32_t clk = (uint32_t)ADV_TIM_CLK_MHz;
+  uint32_t v;
+
+  /* tDTS = 2 / ADV_TIM_CLK_MHz (DIV2 clock division)
+   * Range 0: DTG x tDTS,            DTG 0..127
+   * Range 1: (64+DTG[5:0]) x 2*tDTS, DTG[5:0] 0..63
+   * Range 2: (32+DTG[4:0]) x 8*tDTS, DTG[4:0] 0..31
+   * Range 3: (32+DTG[4:0]) x 16*tDTS, DTG[4:0] 0..31 */
+
+  v = (dt_ns * clk) / 2000U;
+  if (v <= 127U)
+  {
+    return (uint8_t)v;
+  }
+
+  v = (dt_ns * clk) / 4000U;
+  if (v >= 64U && v <= 127U)
+  {
+    return (uint8_t)(0x80U | (v - 64U));
+  }
+
+  v = (dt_ns * clk) / 16000U;
+  if (v >= 32U && v <= 63U)
+  {
+    return (uint8_t)(0xC0U | (v - 32U));
+  }
+
+  v = (dt_ns * clk) / 32000U;
+  if (v < 32U) { v = 32U; }
+  if (v > 63U) { v = 63U; }
+  return (uint8_t)(0xE0U | (v - 32U));
+}
+
+static void WirelessTx_ApplyDeadTime(uint32_t dt_ns)
+{
+  uint8_t dtg = WirelessTx_NsToDtg(dt_ns);
+  htim1.Instance->BDTR = (htim1.Instance->BDTR & ~0xFFU) | (uint32_t)dtg;
+  g_tx_state.dead_time_ns = dt_ns;
 }
 
 /* USER CODE END 0 */
