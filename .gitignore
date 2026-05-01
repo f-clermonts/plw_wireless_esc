@@ -84,3 +84,5 @@ makefile
 
 # IDE launch configs
 *.launch
+
+.settings/
