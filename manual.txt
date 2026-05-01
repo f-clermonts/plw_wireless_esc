@@ -1,0 +1,193 @@
+Wireless charger TX firmware manual
+===================================
+
+Project
+-------
+Doelhardware: B-G431B-ESC1 met STM32G431CB.
+
+Deze firmware gebruikt het bestaande CubeIDE/MCSDK project als basis, maar de
+motor-control applicatie zelf wordt niet gestart. De actieve applicatie staat in
+Src/main.c en draait als een eenvoudige wireless charger transmitter test-app.
+
+
+Hoofdfunctie
+------------
+Na reset initialiseert de firmware de HAL, klok, GPIO, DMA, UART2, ADC1/ADC2,
+comparators, CORDIC, DAC3, OPAMP1/2/3 en TIM1. Daarna start WirelessTx_Init().
+
+Tijdens WirelessTx_Init():
+- ADC1 en ADC2 worden gekalibreerd.
+- De drie opamps worden gestart voor de stroommeetketens.
+- DAC3 kanaal 1 en 2 worden gestart en krijgen standaard OCP threshold 3000.
+- COMP1, COMP2 en COMP4 worden gestart en zijn gekoppeld aan TIM1 break.
+- TIM1 PWM outputs voor channel 1/1N en channel 2/2N worden gestart.
+- De TIM1 main output enable (MOE) blijft uit, dus de PWM staat na boot uit.
+- De stroomoffsets van U/V/W worden gemeten over 64 samples.
+
+De hoofdloop doet continu:
+- CLI-karakters via UART2 verwerken.
+- Button PC10 uitlezen en debouncen.
+- ADC feedback meten: busspanning, stromen U/V/W en potmeter.
+- Frequentie bepalen uit potmeter of uit handmatige CLI-instelling.
+- TIM1 period/compare bijwerken.
+- PWM outputs aan/uit zetten via TIM1 MOE.
+- Periodiek een statusregel printen als stream aan staat.
+
+
+PWM gedrag
+----------
+De PWM loopt op TIM1 in center-aligned mode met een timer clock van 170 MHz.
+
+De dutycycle staat vast op 50 procent:
+- compare = ARR / 2
+- duty is niet meer instelbaar via potmeter of CLI
+
+De frequentie is begrensd op:
+- minimum: 100 kHz
+- maximum: 300 kHz
+
+De runtime berekening is:
+- ARR = 170000000 / (2 * gewenste_frequentie), afgerond met integer math
+- compare = ARR / 2
+
+Richtwaarden:
+- 100 kHz geeft ARR ongeveer 850
+- 300 kHz geeft ARR ongeveer 283
+
+TIM1 channel 1 gebruikt PWM1, TIM1 channel 2 gebruikt PWM2. Daardoor staan de
+twee gebruikte PWM-kanalen tegengesteld ten opzichte van elkaar. De main output
+enable bepaalt of de gate-driver signalen echt actief worden.
+
+
+Potmeter
+--------
+De potmeter zit op PB12 en wordt via ADC1 gelezen.
+
+In standaardmodus "pot" regelt de potmeter de frequentie lineair:
+- ADC 0    -> 100 kHz
+- ADC 4095 -> 300 kHz
+
+De potmeter schakelt de PWM niet meer aan of uit. Aan/uit gebeurt met de button
+of met het CLI commando enable.
+
+
+Button
+------
+De user button zit op PC10.
+
+Gedrag:
+- Start na boot: PWM uit.
+- Elke geldige druk op de button toggelt PWM aan/uit.
+- Debounce tijd: 30 ms.
+- De button wordt als active-low behandeld.
+- GPIO configuratie: input, no pull.
+
+Bij een button-event print de firmware:
+
+button tx=0
+
+of:
+
+button tx=1
+
+
+Beveiliging en metingen
+-----------------------
+De firmware start de bestaande stroommeetketens en comparators. TIM1 break is
+gekoppeld aan COMP1, COMP2 en COMP4. De DAC threshold voor overcurrent staat na
+boot op 3000 en kan via de CLI worden aangepast.
+
+De statusregel toont ruwe en offset-gecorrigeerde meetwaarden. Dit is bedoeld
+voor bring-up en debugging, niet als gekalibreerde meetinterface.
+
+
+UART / CLI
+----------
+De CLI gebruikt UART2:
+- TX: PB3
+- RX: PB4
+- baudrate: 1843200
+- format: 8 databits, no parity, 1 stopbit
+- flow control: none
+
+De prompt is:
+
+tx>
+
+Invoer:
+- CR of LF voert het commando uit.
+- Backspace werkt.
+- Printbare ASCII tekens worden ge-echoed.
+- De commandobuffer is 64 bytes inclusief nulterminator.
+
+
+CLI commando's
+--------------
+help
+  Print de commandolijst.
+
+status
+  Print een statusregel, bijvoorbeeld:
+  status mode=pot tx=1 freq=150000Hz arr=566 duty=50% cmp=283 pot=1024 bus=...
+
+mode pot
+  Zet frequentieregeling terug naar de potmeter.
+  Dit is de standaardmodus na boot.
+
+mode manual
+  Zet frequentieregeling op handmatig.
+  In deze modus gebruikt de firmware de frequentie van het freq commando.
+
+enable 0
+  Schakelt PWM uit.
+  Dit zet dezelfde enable-state als de button toggle gebruikt.
+
+enable 1
+  Schakelt PWM aan.
+  Dit zet dezelfde enable-state als de button toggle gebruikt.
+
+freq <waarde>
+  Zet de handmatige frequentie.
+  Geldige range wordt begrensd op 100..300 kHz.
+  Waarden <= 1000 worden als kHz geinterpreteerd.
+
+  Voorbeelden:
+  freq 100     -> 100 kHz
+  freq 250     -> 250 kHz
+  freq 300000  -> 300 kHz
+
+  Let op: dit commando heeft direct effect op de PWM-frequentie als mode manual
+  actief is. In mode pot blijft de potmeter de frequentie bepalen.
+
+pwm
+  Print alleen een korte melding dat duty vast op 50 procent staat en dat freq
+  gebruikt kan worden voor de frequentie.
+
+stream on
+  Zet periodieke statusregels aan.
+
+stream off
+  Zet periodieke statusregels uit.
+  Handig als de statusstream het typen in de CLI stoort.
+
+cal
+  Voert opnieuw de current-offset kalibratie uit over 64 samples.
+  Gebruik dit bij voorkeur terwijl er geen relevante laadstroom loopt.
+
+ocp <0..4095>
+  Zet de DAC threshold voor overcurrent protectie.
+  Waarden boven 4095 worden begrensd op 4095.
+
+
+Bootgedrag
+----------
+Na een normale boot is de functionele toestand:
+- mode = pot
+- tx = off
+- frequentie = potmeter tussen 100 en 300 kHz
+- duty = 50 procent
+- status stream = on
+- OCP DAC threshold = 3000
+
+Druk op de PC10 button om de PWM aan te zetten. Druk opnieuw om de PWM uit te
+zetten.

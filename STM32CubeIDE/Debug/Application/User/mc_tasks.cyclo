@@ -1,0 +1,11 @@
+C:/git/wireless-esc/Src/mc_tasks.c:85:13:MCboot	2
+C:/git/wireless-esc/Src/mc_tasks.c:249:13:TSK_SetChargeBootCapDelayM1	1
+C:/git/wireless-esc/Src/mc_tasks.c:260:13:TSK_ChargeBootCapDelayHasElapsedM1	1
+C:/git/wireless-esc/Src/mc_tasks.c:276:13:TSK_SetStopPermanencyTimeM1	1
+C:/git/wireless-esc/Src/mc_tasks.c:287:13:TSK_StopPermanencyTimeHasElapsedM1	1
+C:/git/wireless-esc/Src/mc_tasks.c:313:16:TSK_HighFrequencyTask	2
+C:/git/wireless-esc/Src/mc_tasks.c:368:13:TSK_SafetyTask_PWMOFF	3
+C:/git/wireless-esc/Src/mc_tasks.c:345:13:TSK_SafetyTask	2
+C:/git/wireless-esc/Src/mc_tasks.c:162:13:MC_RunMotorControlTasks	7
+C:/git/wireless-esc/Src/mc_tasks.c:417:13:TSK_HardwareFaultTask	1
+C:/git/wireless-esc/Src/mc_tasks.c:433:13:mc_lock_pins	1

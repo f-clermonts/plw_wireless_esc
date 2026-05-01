@@ -1,0 +1,7 @@
+C:/git/wireless-esc/Src/main.c:648:13:WirelessTx_Log	2
+C:/git/wireless-esc/Src/main.c:456:13:WirelessTx_PrintDebug	2
+C:/git/wireless-esc/Src/main.c:388:13:WirelessTx_SampleFeedback.part.0	5
+C:/git/wireless-esc/Src/main.c:438:13:WirelessTx_CalibrateCurrentOffsets	8
+C:/git/wireless-esc/Src/main.c:754:6:SystemClock_Config	3
+C:/git/wireless-esc/Src/main.c:680:5:main	95
+C:/git/wireless-esc/Src/main.c:1434:6:Error_Handler	1
