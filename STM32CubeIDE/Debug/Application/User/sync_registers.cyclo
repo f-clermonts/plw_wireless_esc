@@ -1,5 +1,0 @@
-C:/git/wireless-esc/Src/sync_registers.c:33:9:RI_SetRegisterGlobal	17
-C:/git/wireless-esc/Src/sync_registers.c:167:9:RI_SetRegisterMotor1	90
-C:/git/wireless-esc/Src/sync_registers.c:616:9:RI_GetRegisterGlobal	20
-C:/git/wireless-esc/Src/sync_registers.c:761:11:RI_GetRegisterMotor1	104
-C:/git/wireless-esc/Src/sync_registers.c:1348:9:RI_MovString	4
