@@ -53,3 +53,34 @@ dkms.conf
 
 # debug information files
 *.dwo
+# STM32CubeIDE
+.settings/
+.project
+.cproject
+
+# Build folders
+Debug/
+Release/
+
+# CubeMX / generated junk
+*.ioc
+
+# Cyclo / generated sources (zoals jij hebt)
+*.cyclo
+
+# Logs / temp
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build system (CubeIDE / Make)
+Debug/
+Release/
+*.mk
+makefile
+*.list
+
+# IDE launch configs
+*.launch
