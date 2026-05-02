@@ -32,6 +32,15 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+#define TX_CURRENT_AVG_WINDOW  256U
+
+typedef struct
+{
+  uint16_t buf[TX_CURRENT_AVG_WINDOW];
+  uint32_t sum;
+  uint16_t idx;
+} CurrentAvg_t;
+
 typedef struct
 {
   uint16_t bus_raw;
@@ -54,6 +63,10 @@ typedef struct
   bool stream_enabled;
   uint32_t last_debug_tick;
   uint32_t dead_time_ns;
+  CurrentAvg_t current_u_avg;
+  CurrentAvg_t current_v_avg;
+  uint32_t current_u_filtered;
+  uint32_t current_v_filtered;
 } WirelessTxState_t;
 /* USER CODE END PTD */
 
@@ -139,6 +152,7 @@ static void WirelessTx_ProcessCli(void);
 static void WirelessTx_HandleCommand(char *command);
 static void WirelessTx_Log(const char *format, ...);
 static void WirelessTx_PrintPrompt(void);
+static void WirelessTx_UpdateCurrentFilter(void);
 static uint8_t WirelessTx_NsToDtg(uint32_t dt_ns);
 static void WirelessTx_ApplyDeadTime(uint32_t dt_ns);
 /* USER CODE END PFP */
@@ -257,6 +271,7 @@ static void WirelessTx_Loop(void)
   WirelessTx_ProcessCli();
   WirelessTx_ProcessButton();
   WirelessTx_SampleFeedback();
+  WirelessTx_UpdateCurrentFilter();
 
   g_tx_state.tx_enabled = g_tx_state.force_enable;
 
@@ -464,7 +479,7 @@ static void WirelessTx_PrintDebug(void)
   uint32_t arr = __HAL_TIM_GET_AUTORELOAD(&htim1);
   int length = snprintf(message,
                         sizeof(message),
-                        "status mode=%s tx=%u freq=%luHz arr=%lu duty=50%% cmp=%u pot=%u bus=%u iu=%4ld iv=%4ld dt=%5luns\r\n",
+                        "status mode=%s tx=%u freq=%luHz arr=%lu duty=50%% cmp=%u pot=%u bus=%u iu=%4lu iv=%4lu dt=%5luns\r\n",
                         g_tx_state.manual_mode ? "manual" : "pot",
                         g_tx_state.tx_enabled ? 1U : 0U,
                         (unsigned long)g_tx_state.frequency_hz,
@@ -472,8 +487,8 @@ static void WirelessTx_PrintDebug(void)
                         g_tx_state.compare,
                         g_tx_state.pot_raw,
                         g_tx_state.bus_raw,
-                        (long)g_tx_state.current_u,
-                        (long)g_tx_state.current_v,
+                        (unsigned long)g_tx_state.current_u_filtered,
+                        (unsigned long)g_tx_state.current_v_filtered,
                         (unsigned long)g_tx_state.dead_time_ns);
 
   if (length > 0)
@@ -697,6 +712,24 @@ static void WirelessTx_Log(const char *format, ...)
 static void WirelessTx_PrintPrompt(void)
 {
   WirelessTx_Log("tx> ");
+}
+
+static void WirelessTx_UpdateCurrentFilter(void)
+{
+  uint16_t abs_u = (g_tx_state.current_u >= 0) ? (uint16_t)g_tx_state.current_u : (uint16_t)(-g_tx_state.current_u);
+  uint16_t abs_v = (g_tx_state.current_v >= 0) ? (uint16_t)g_tx_state.current_v : (uint16_t)(-g_tx_state.current_v);
+
+  g_tx_state.current_u_avg.sum -= g_tx_state.current_u_avg.buf[g_tx_state.current_u_avg.idx];
+  g_tx_state.current_u_avg.buf[g_tx_state.current_u_avg.idx] = abs_u;
+  g_tx_state.current_u_avg.sum += abs_u;
+  g_tx_state.current_u_avg.idx = (uint16_t)((g_tx_state.current_u_avg.idx + 1U) % TX_CURRENT_AVG_WINDOW);
+  g_tx_state.current_u_filtered = g_tx_state.current_u_avg.sum / TX_CURRENT_AVG_WINDOW;
+
+  g_tx_state.current_v_avg.sum -= g_tx_state.current_v_avg.buf[g_tx_state.current_v_avg.idx];
+  g_tx_state.current_v_avg.buf[g_tx_state.current_v_avg.idx] = abs_v;
+  g_tx_state.current_v_avg.sum += abs_v;
+  g_tx_state.current_v_avg.idx = (uint16_t)((g_tx_state.current_v_avg.idx + 1U) % TX_CURRENT_AVG_WINDOW);
+  g_tx_state.current_v_filtered = g_tx_state.current_v_avg.sum / TX_CURRENT_AVG_WINDOW;
 }
 
 static uint8_t WirelessTx_NsToDtg(uint32_t dt_ns)

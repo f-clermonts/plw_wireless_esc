@@ -128,7 +128,7 @@ help
 
 status
   Print een statusregel, bijvoorbeeld:
-  status mode=pot tx=1 freq=150000Hz arr=566 duty=50% cmp=283 pot=1024 bus=...
+  status mode=pot tx=1 freq=150000Hz arr=566 duty=50% cmp=283 pot=1024 bus=... dt=  750ns
 
 mode pot
   Zet frequentieregeling terug naar de potmeter.
@@ -174,6 +174,23 @@ cal
   Voert opnieuw de current-offset kalibratie uit over 64 samples.
   Gebruik dit bij voorkeur terwijl er geen relevante laadstroom loopt.
 
+dt
+  Print de huidige deadtime instelling.
+
+dt <ns>
+  Zet de deadtime van de TIM1 complementaire PWM-uitgangen in nanoseconden.
+  De waarde wordt hardware-matig afgerond naar de dichtstbijzijnde stap van de
+  STM32 BDTR DTG-encoder (tDTS = 11.76 ns bij 170 MHz met CKD=DIV2).
+  Maximale waarde: 11854 ns. Waarden daarboven worden begrensd.
+
+  De instelling gaat direct in zonder de PWM te stoppen.
+
+  Voorbeelden:
+  dt         -> dt=750ns
+  dt 500     -> deadtime ongeveer 494 ns
+  dt 1000    -> deadtime ongeveer 988 ns
+  dt 2000    -> deadtime ongeveer 1976 ns
+
 ocp <0..4095>
   Zet de DAC threshold voor overcurrent protectie.
   Waarden boven 4095 worden begrensd op 4095.
@@ -186,6 +203,7 @@ Na een normale boot is de functionele toestand:
 - tx = off
 - frequentie = potmeter tussen 100 en 300 kHz
 - duty = 50 procent
+- deadtime = 750 ns
 - status stream = on
 - OCP DAC threshold = 3000
 
